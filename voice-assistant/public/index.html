@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zerith Assistant</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500&family=Rajdhani:wght@500;600;700&display=swap">
+<style>
+  :root {
+    --bg: #eef1f4; --panel: #ffffff; --fg: #14202b; --muted: #566676; --line: #d2dae2;
+    --accent-f: #a85d08; --accent-e: #0a6a8a; --ink-on-accent: #ffffff;
+    --agent-bg: #e3e9ef; --user-bg: #14202b; --user-fg: #f2f6f9; --bad: #b3261e;
+    --font-display: "Rajdhani", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --font-body: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1118; --panel: #111a24; --fg: #e5ecf2; --muted: #8a9aaa; --line: #213040;
+      --accent-f: #f0a440; --accent-e: #52c7ea; --ink-on-accent: #101010;
+      --agent-bg: #172331; --user-bg: #26384b; --user-fg: #f2f6f9; --bad: #ff8a80;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.55; }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .app { --accent: var(--accent-f); height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 12px; max-width: 760px; margin-inline: auto; padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .app[data-persona="edith"] { --accent: var(--accent-e); }
+
+  header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; align-items: center; }
+  .orb { grid-row: span 2; width: 44px; height: 44px; border-radius: 50%; position: relative; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 55%, #fff) 0%, var(--accent) 45%, color-mix(in srgb, var(--accent) 40%, #000) 100%); box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--accent); }
+  h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 26px; letter-spacing: 0.14em; line-height: 1; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .controls { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+  .seg button { border: 0; background: transparent; padding: 5px 12px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+  .toggle, select { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 10px; font-size: 14px; cursor: pointer; }
+  .toggle { color: var(--muted); }
+  .toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); }
+  select { max-width: 220px; }
+
+  #log { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 4px 2px 8px; min-height: 0; }
+  .msg { max-width: min(92%, 600px); padding: 10px 14px; border-radius: 10px; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .msg.agent { background: var(--agent-bg); align-self: flex-start; border-top-left-radius: 3px; }
+  .msg.user { background: var(--user-bg); color: var(--user-fg); align-self: flex-end; border-top-right-radius: 3px; }
+  .msg.interim { opacity: 0.65; }
+  .who { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.12em; font-size: 12px; color: var(--accent); }
+  .note { align-self: center; color: var(--muted); font-size: 14px; text-align: center; max-width: 560px; }
+  .note.bad { color: var(--bad); }
+
+  footer { display: grid; gap: 10px; justify-items: center; }
+  #status { color: var(--muted); font-size: 14px; min-height: 22px; text-align: center; }
+  .mic { width: 84px; height: 84px; border-radius: 50%; border: 0; cursor: pointer; background: var(--accent); color: var(--ink-on-accent); display: grid; place-items: center; position: relative; }
+  .mic svg { width: 34px; height: 34px; }
+  .mic::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .mic[data-mode="listening"]::after { animation: ring 1.3s ease-out infinite; }
+    .mic[data-mode="speaking"]::after { animation: ring 0.8s ease-out infinite; }
+    @keyframes ring { 0% { transform: scale(0.9); opacity: 0.8; } 100% { transform: scale(1.3); opacity: 0; } }
+  }
+  .mic[data-mode="listening"]::after, .mic[data-mode="speaking"]::after { opacity: 0.5; }
+  .mic[data-mode="thinking"] { opacity: 0.75; }
+  form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; width: 100%; }
+  input[type="text"] { width: 100%; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 9px 12px; }
+  .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="app" id="app" data-persona="friday">
+  <header>
+    <div class="orb" aria-hidden="true"></div>
+    <h1 id="name">FRIDAY</h1>
+    <div class="sub" id="tagline">Tap the microphone and talk. English or 中文.</div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Assistant">
+        <button type="button" data-persona="friday" aria-pressed="true">FRIDAY</button>
+        <button type="button" data-persona="edith" aria-pressed="false">EDITH</button>
+      </div>
+      <div class="seg" role="group" aria-label="Language you speak">
+        <button type="button" data-lang="en" aria-pressed="true">English</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+      <button type="button" class="toggle" id="t-hands" aria-pressed="false">Keep listening</button>
+      <select id="voice" aria-label="Voice"></select>
+      <button type="button" class="toggle" id="t-test">Test voice</button>
+    </div>
+  </header>
+
+  <div id="log" role="log" aria-live="polite" aria-label="Conversation"></div>
+
+  <footer>
+    <div id="status" role="status">Ready</div>
+    <button type="button" class="mic" id="mic" data-mode="idle" aria-label="Talk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+    </button>
+    <form id="form">
+      <input type="text" id="box" placeholder="Or type here / 也可以打字" aria-label="Message" autocomplete="off">
+      <button type="submit" class="btn">Send</button>
+    </form>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const app = $('#app'), log = $('#log'), micBtn = $('#mic'), statusEl = $('#status'), voiceSel = $('#voice'), box = $('#box');
+  const store = {
+    get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const PERSONAS = {
+    friday: { name: 'FRIDAY', tag: 'Tap the microphone and talk. English or 中文.', hello: { en: 'Hey boss, FRIDAY here. Tap the microphone and tell me what you need.', zh: '老板好，我是 FRIDAY。点一下麦克风，告诉我你需要什么。' }, enVoice: ['en-IE', 'en-GB'], rate: 1.03 },
+    edith: { name: 'EDITH', tag: 'Tactical assistant. Tap the microphone and talk.', hello: { en: 'EDITH online, sir. Tap the microphone when you are ready.', zh: 'EDITH 已上线。准备好后，请点一下麦克风。' }, enVoice: ['en-US', 'en-GB'], rate: 0.98 },
+  };
+  const state = {
+    persona: store.get('zv.persona', 'friday') === 'edith' ? 'edith' : 'friday',
+    lang: store.get('zv.lang', 'en') === 'zh' ? 'zh' : 'en',
+    hands: store.get('zv.hands', '0') === '1',
+    mode: 'idle', turns: [], ctl: null, rec: null, pending: 0, streamDone: true, gen: 0,
+  };
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const synth = window.speechSynthesis || null;
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+  const toBottom = () => { log.scrollTop = log.scrollHeight; };
+  const isZh = (t) => (t.match(/[一-鿿]/g) || []).length > Math.max(1, t.length * 0.2);
+
+  const LABEL = {
+    idle: { en: 'Tap the microphone to talk', zh: '点击麦克风开始说话' },
+    listening: { en: 'Listening…', zh: '正在听…' },
+    thinking: { en: 'Thinking…', zh: '思考中…' },
+    speaking: { en: 'Speaking… tap to interrupt', zh: '正在说话…点击可打断' },
+  };
+  function setMode(m) {
+    state.mode = m;
+    micBtn.dataset.mode = m;
+    statusEl.textContent = LABEL[m][state.lang];
+    micBtn.setAttribute('aria-label', m === 'listening' ? 'Stop listening' : m === 'speaking' || m === 'thinking' ? 'Interrupt' : 'Talk');
+  }
+  function note(text, bad) { const n = el('div', 'note' + (bad ? ' bad' : ''), text); log.append(n); toBottom(); }
+  function bubble(kind, text) {
+    const m = el('div', 'msg ' + kind);
+    if (kind === 'agent') { m.append(el('div', 'who', PERSONAS[state.persona].name)); }
+    const body = el('div', 'body', text || '');
+    m.append(body); log.append(m); toBottom();
+    return body;
+  }
+
+  // ---------- voices ----------
+  let voices = [];
+  function loadVoices() {
+    if (!synth) return;
+    voices = synth.getVoices();
+    const want = state.lang === 'zh' ? 'zh' : 'en';
+    const list = voices.filter((v) => v.lang.toLowerCase().startsWith(want));
+    voiceSel.replaceChildren();
+    for (const v of list) { const o = el('option', '', `${v.name} (${v.lang})`); o.value = v.voiceURI; voiceSel.append(o); }
+    if (!list.length) { const o = el('option', '', 'Default voice'); o.value = ''; voiceSel.append(o); }
+    const saved = store.get('zv.voice.' + state.persona + '.' + state.lang, '');
+    const pick = list.find((v) => v.voiceURI === saved) || bestVoice(list);
+    if (pick) voiceSel.value = pick.voiceURI;
+  }
+  function bestVoice(list) {
+    if (!list.length) return null;
+    if (state.lang === 'zh') return list.find((v) => /zh[-_]CN/i.test(v.lang)) || list[0];
+    for (const code of PERSONAS[state.persona].enVoice) {
+      const hit = list.find((v) => v.lang.replace('_', '-').toLowerCase() === code.toLowerCase());
+      if (hit) return hit;
+    }
+    return list[0];
+  }
+  function voiceFor(lang) {
+    // lang is 'en' or 'zh' for the chunk being spoken; use the picked voice when it matches.
+    const picked = voices.find((v) => v.voiceURI === voiceSel.value);
+    if (picked && picked.lang.toLowerCase().startsWith(lang)) return picked;
+    const list = voices.filter((v) => v.lang.toLowerCase().startsWith(lang));
+    if (lang === 'zh') return list.find((v) => /zh[-_]CN/i.test(v.lang)) || list[0] || null;
+    const saved = store.get('zv.voice.' + state.persona + '.en', '');
+    return list.find((v) => v.voiceURI === saved) || bestVoice(list);
+  }
+  if (synth) { synth.addEventListener('voiceschanged', loadVoices); loadVoices(); }
+
+  // ---------- speech out (sentence by sentence while the reply streams) ----------
+  const stripMd = (t) => t.replace(/\*\*|__|`/g, '').replace(/^\s*[-•*#]+\s+/gm, '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
+  function speakChunk(text, gen) {
+    const clean = stripMd(text);
+    if (!clean || !synth) return;
+    const lang = isZh(clean) ? 'zh' : 'en';
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = lang === 'zh' ? 'zh-CN' : (voiceFor('en') ? voiceFor('en').lang : 'en-GB');
+    const v = voiceFor(lang);
+    if (v) u.voice = v;
+    u.rate = PERSONAS[state.persona].rate;
+    state.pending += 1;
+    const fin = () => { if (gen !== state.gen) return; state.pending = Math.max(0, state.pending - 1); maybeFinish(); };
+    u.onstart = () => { if (gen === state.gen && state.mode !== 'listening') setMode('speaking'); };
+    u.onend = fin; u.onerror = fin;
+    synth.speak(u);
+  }
+  function takeSentences(buf, flush) {
+    const out = []; let start = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const c = buf[i];
+      const hard = '。！？!?\n；;'.includes(c);
+      const soft = c === '.' && i + 1 < buf.length && /\s/.test(buf[i + 1]) && !/\d/.test(buf[i - 1] || '');
+      if (hard || soft) { const s = buf.slice(start, i + 1); if (s.trim()) out.push(s); start = i + 1; }
+    }
+    let rest = buf.slice(start);
+    if (flush && rest.trim()) { out.push(rest); rest = ''; }
+    return { out, rest };
+  }
+  function maybeFinish() {
+    if (state.streamDone && state.pending === 0 && (state.mode === 'speaking' || state.mode === 'thinking')) {
+      setMode('idle');
+      if (state.hands) startListening();
+    }
+  }
+  function stopAll() {
+    state.gen += 1;
+    if (state.ctl) { state.ctl.abort(); state.ctl = null; }
+    if (synth) synth.cancel();
+    state.pending = 0; state.streamDone = true;
+    if (state.rec) { try { state.rec.abort(); } catch (e) {} }
+  }
+
+  // ---------- talking to the server ----------
+  async function ask(text) {
+    text = text.trim();
+    if (!text) return;
+    stopAll();
+    const gen = state.gen;
+    bubble('user', text);
+    state.turns.push({ role: 'user', content: text });
+    const body = bubble('agent', '');
+    let full = '', buf = '', sawError = false;
+    state.streamDone = false; state.pending = 0;
+    setMode('thinking');
+    const ctl = new AbortController(); state.ctl = ctl;
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST', signal: ctl.signal, headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          persona: state.persona, messages: state.turns.slice(-16),
+          now: new Date().toString(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error('The server did not answer (' + res.status + ').');
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let sse = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        sse += dec.decode(value, { stream: true });
+        let idx;
+        while ((idx = sse.indexOf('\n\n')) >= 0) {
+          const frame = sse.slice(0, idx); sse = sse.slice(idx + 2);
+          if (!frame.startsWith('data: ')) continue;
+          let ev; try { ev = JSON.parse(frame.slice(6)); } catch (e) { continue; }
+          if (gen !== state.gen) return;
+          if (ev.t) {
+            full += ev.t; buf += ev.t; body.textContent = full; toBottom();
+            const { out, rest } = takeSentences(buf, false); buf = rest;
+            for (const s of out) speakChunk(s, gen);
+          } else if (ev.error) { sawError = true; note(ev.error, true); }
+        }
+      }
+      if (gen !== state.gen) return;
+      for (const s of takeSentences(buf, true).out) speakChunk(s, gen);
+      if (full) state.turns.push({ role: 'assistant', content: full });
+      else if (!sawError) body.textContent = '…';
+      if (!full) body.parentElement.remove();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      if (gen !== state.gen) return;
+      note(String(e && e.message ? e.message : e), true);
+      if (!full) body.parentElement.remove();
+    } finally {
+      if (gen === state.gen) {
+        state.streamDone = true;
+        if (state.pending === 0) { setMode('idle'); if (state.hands && !sawError && full) startListening(); }
+        else if (state.mode === 'thinking') setMode('speaking');
+      }
+    }
+  }
+
+  // ---------- speech in ----------
+  let interimEl = null;
+  function startListening() {
+    if (!SR) { note('This browser cannot listen. Use Chrome, Edge or Safari, or type below.', true); return; }
+    stopAll();
+    const rec = new SR();
+    state.rec = rec;
+    rec.lang = state.lang === 'zh' ? 'zh-CN' : 'en-US';
+    rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+    let finalText = '', heard = false;
+    rec.onstart = () => setMode('listening');
+    rec.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+      }
+      heard = true;
+      const shown = (finalText + interim).trim();
+      if (!interimEl) { interimEl = bubble('user', ''); interimEl.parentElement.classList.add('interim'); }
+      interimEl.textContent = shown; toBottom();
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { note('Microphone access is blocked. Allow it in the browser address bar, and open this page at http://localhost or over https.', true); state.hands = false; syncControls(); }
+      else if (e.error === 'audio-capture') note('No microphone was found.', true);
+      else if (e.error === 'network') note('Speech recognition needs an internet connection.', true);
+    };
+    rec.onend = () => {
+      const had = interimEl; interimEl = null;
+      if (state.rec !== rec) { if (had) had.parentElement.remove(); return; }
+      state.rec = null;
+      if (had) had.parentElement.remove();
+      const text = finalText.trim();
+      if (text) { ask(text); }
+      else { setMode('idle'); if (state.hands && !heard && state.mode === 'idle') { state.silent = (state.silent || 0) + 1; if (state.silent < 3) setTimeout(() => { if (state.mode === 'idle' && state.hands) startListening(); }, 400); else { state.silent = 0; state.hands = false; syncControls(); note('Stopped listening because I heard nothing. Tap the microphone to continue.'); } } }
+      if (text) state.silent = 0;
+    };
+    try { rec.start(); } catch (e) { setMode('idle'); }
+  }
+
+  micBtn.addEventListener('click', () => {
+    if (state.mode === 'listening') { if (state.rec) { try { state.rec.stop(); } catch (e) {} } return; }
+    if (state.mode === 'speaking' || state.mode === 'thinking') { stopAll(); setMode('idle'); startListening(); return; }
+    state.silent = 0; startListening();
+  });
+  $('#form').addEventListener('submit', (e) => { e.preventDefault(); const t = box.value; box.value = ''; ask(t); });
+
+  // ---------- controls ----------
+  function syncControls() {
+    app.dataset.persona = state.persona;
+    $('#name').textContent = PERSONAS[state.persona].name;
+    $('#tagline').textContent = PERSONAS[state.persona].tag;
+    document.querySelectorAll('button[data-persona]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.persona === state.persona)));
+    document.querySelectorAll('button[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === state.lang)));
+    $('#t-hands').setAttribute('aria-pressed', String(state.hands));
+    document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en';
+    statusEl.textContent = LABEL[state.mode][state.lang];
+    voiceSel.hidden = !synth; $('#t-test').hidden = !synth;
+    loadVoices();
+  }
+  document.querySelectorAll('button[data-persona]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.persona === state.persona) return;
+    stopAll(); setMode('idle');
+    state.persona = b.dataset.persona; store.set('zv.persona', state.persona); syncControls();
+    note('Switched to ' + PERSONAS[state.persona].name + '.');
+  }));
+  document.querySelectorAll('button[data-lang]').forEach((b) => b.addEventListener('click', () => {
+    state.lang = b.dataset.lang; store.set('zv.lang', state.lang); syncControls();
+  }));
+  $('#t-hands').addEventListener('click', () => { state.hands = !state.hands; store.set('zv.hands', state.hands ? '1' : '0'); syncControls(); });
+  voiceSel.addEventListener('change', () => store.set('zv.voice.' + state.persona + '.' + state.lang, voiceSel.value));
+  $('#t-test').addEventListener('click', () => {
+    if (!synth) return;
+    synth.cancel(); state.gen += 1;
+    speakChunk(PERSONAS[state.persona].hello[state.lang], state.gen);
+  });
+
+  syncControls(); setMode('idle');
+  bubble('agent', PERSONAS[state.persona].hello[state.lang]);
+  if (!SR) note('Voice input works in Chrome, Edge and Safari. In this browser you can still type, and I will talk back.');
+  if (!synth) note('This browser cannot speak replies aloud.');
+})();
+</script>
+</body>
+</html>

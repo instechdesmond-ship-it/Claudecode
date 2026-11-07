@@ -1,0 +1,16 @@
+{
+  "name": "zerith-voice-assistant",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Talk to FRIDAY or EDITH, a bilingual (English / Mandarin) voice assistant for your company.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  }
+}
