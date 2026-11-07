@@ -29,6 +29,32 @@ characters made for your company.
   system settings (for example Settings, Accessibility, Spoken Content on a Mac) and they appear here.
 - You can also type in the box at the bottom.
 
+## Use it on a phone or tablet
+
+A phone or tablet only allows the microphone on a secure `https` address, so the app has to run on a
+hosting service instead of your computer. The server refuses to start on the internet without a password,
+so nobody else can spend your API credit.
+
+Example with Render (https://render.com). Other hosts that run Docker work the same way.
+
+1. Put this folder in a GitHub repository.
+2. In Render choose **New, Web Service**, pick the repository, and set:
+   - **Root Directory**: `voice-assistant` (leave empty if this folder is the whole repository)
+   - **Runtime**: Docker
+3. Add two environment variables:
+   - `ANTHROPIC_API_KEY`: your key
+   - `ACCESS_PASSWORD`: a long password you will type on the tablet
+   - and `HOST` = `0.0.0.0`
+4. Deploy. Render gives you an `https://...onrender.com` address.
+5. On the tablet open that address in Chrome (Android) or Safari (iPad), enter the password, allow the
+   microphone, and tap the big button. Use "Add to Home Screen" to make it an app icon.
+
+Notes:
+- Hosting usually costs a small monthly fee. Free tiers often go to sleep and take a minute to wake up.
+- Logins last 30 days. Wrong passwords are rate limited.
+- Change the password any time in the host's settings. Old logins stop working.
+- Everything said goes through your browser's speech service and then to Claude. Leave the address private.
+
 ## Teach it about your company
 
 Edit `company.md` (services, prices, hours, answers you give customers), then restart with `npm start`.
@@ -49,4 +75,5 @@ Edit `company.md` (services, prices, hours, answers you give customers), then re
 | `ASSISTANT_MODEL` | `claude-opus-5-5` | Use `claude-haiku-5-5` for the fastest and cheapest replies. |
 | `ASSISTANT_EFFORT` | `low` | `low` is quickest. `medium` or `high` think longer. |
 | `PORT` | `3000` | Port to listen on. |
-| `HOST` | `127.0.0.1` | Only this computer. Do not change it unless the site is behind HTTPS and a login, because anyone who can reach it spends your API credit. |
+| `HOST` | `127.0.0.1` | Only this computer. `0.0.0.0` opens it to the network and requires `ACCESS_PASSWORD`. |
+| `ACCESS_PASSWORD` | none | Turns on the login page. Required when `HOST` is not local. |

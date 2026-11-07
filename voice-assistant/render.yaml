@@ -1,0 +1,15 @@
+# One-click setup on Render (https://render.com). Render gives the site an https address,
+# which phones and tablets need before they allow the microphone.
+services:
+  - type: web
+    name: zerith-voice-assistant
+    runtime: docker
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: ANTHROPIC_API_KEY
+        sync: false        # you type this in Render's dashboard, it is never stored in the code
+      - key: ACCESS_PASSWORD
+        sync: false        # pick a long password; you type it on the tablet to log in

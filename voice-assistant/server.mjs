@@ -5,6 +5,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,49 @@ const HOST = process.env.HOST || "127.0.0.1";
 const MODEL = process.env.ASSISTANT_MODEL || "claude-opus-5-5";
 const EFFORT = process.env.ASSISTANT_EFFORT || "low"; // low keeps replies quick for talking
 const MAX_BODY = 64 * 1024;
+// Set ACCESS_PASSWORD when the site is reachable from the internet. Everyone must log in first.
+const PASSWORD = process.env.ACCESS_PASSWORD || "";
+const LOCAL_HOSTS = ["127.0.0.1", "localhost", "::1"];
+if (!PASSWORD && !LOCAL_HOSTS.includes(HOST)) {
+  console.error("Refusing to start: HOST is open to the network but ACCESS_PASSWORD is not set.\nAnyone who finds the address could spend your API credit. Set ACCESS_PASSWORD and try again.");
+  process.exit(1);
+}
+const KEY = crypto.createHash("sha256").update("zv-session:" + PASSWORD).digest();
+const SESSION_DAYS = 30;
+const sign = (exp) => crypto.createHmac("sha256", KEY).update(String(exp)).digest("hex");
+const sha = (x) => crypto.createHash("sha256").update(String(x)).digest();
+function sessionCookie(req) {
+  const exp = Date.now() + SESSION_DAYS * 864e5;
+  const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return `zv=${exp}.${sign(exp)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_DAYS * 86400}${secure}`;
+}
+function authed(req) {
+  if (!PASSWORD) return true;
+  const m = /(?:^|;\s*)zv=([^;]+)/.exec(req.headers.cookie || "");
+  if (!m) return false;
+  const [exp, sig] = m[1].split(".");
+  if (!exp || !sig || !(Number(exp) > Date.now())) return false;
+  const good = sign(exp);
+  return sig.length === good.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(good));
+}
+const attempts = new Map();
+function tooManyLogins(req) {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  const now = Date.now();
+  const recent = (attempts.get(ip) || []).filter((t) => now - t < 60_000);
+  recent.push(now);
+  attempts.set(ip, recent);
+  if (attempts.size > 500) attempts.clear();
+  return recent.length > 6;
+}
+const LOGIN_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zerith Assistant</title>
+<style>:root{color-scheme:light dark}body{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:Canvas;color:CanvasText}
+form{display:grid;gap:12px;width:min(92vw,340px)}h1{margin:0;letter-spacing:.14em;font-size:24px}input,button{font:inherit;padding:11px 12px;border-radius:10px;border:1px solid GrayText}button{cursor:pointer;font-weight:600}
+#e{color:#b3261e;min-height:1.3em;font-size:14px}</style></head><body>
+<form id="f"><h1>ZERITH ASSISTANT</h1><label for="p">Password / 密码</label><input id="p" type="password" autocomplete="current-password" autofocus><button type="submit">Enter</button><div id="e" role="alert"></div></form>
+<script>document.getElementById('f').addEventListener('submit',async(ev)=>{ev.preventDefault();const e=document.getElementById('e');e.textContent='';
+try{const r=await fetch('/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})});
+if(r.ok){location.reload();}else if(r.status===429){e.textContent='Too many tries. Wait a minute.';}else{e.textContent='Wrong password.';}}catch(x){e.textContent='Could not reach the server.';}});</script></body></html>`;
 
 const PAGE = fs.readFileSync(path.join(here, "public", "index.html"));
 const notesPath = path.join(here, "company.md");
@@ -149,10 +193,19 @@ async function handleChat(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
+    const headers = { "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" };
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
-      res.end(PAGE);
+      res.writeHead(200, { ...headers, "content-type": "text/html; charset=utf-8" });
+      res.end(authed(req) ? PAGE : LOGIN_PAGE);
+    } else if (req.method === "POST" && url.pathname === "/login") {
+      if (!PASSWORD) { res.writeHead(204, headers); res.end(); return; }
+      if (tooManyLogins(req)) { res.writeHead(429, headers); res.end(); return; }
+      let pw = "";
+      try { pw = String(JSON.parse(await readBody(req)).password ?? ""); } catch (e) { /* wrong */ }
+      if (crypto.timingSafeEqual(sha(pw), sha(PASSWORD))) { res.writeHead(204, { ...headers, "set-cookie": sessionCookie(req) }); res.end(); }
+      else { res.writeHead(401, headers); res.end(); }
     } else if (req.method === "POST" && url.pathname === "/api/chat") {
+      if (!authed(req)) { res.writeHead(401, { ...headers, "content-type": "application/json" }); res.end(JSON.stringify({ error: "Please log in again." })); return; }
       await handleChat(req, res);
     } else {
       res.writeHead(404, { "content-type": "text/plain" });
@@ -168,6 +221,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Voice assistant running at http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   console.log(`Model: ${MODEL} (effort ${EFFORT}). Open the address in Chrome, Edge or Safari.`);
+  console.log(PASSWORD ? "Login is required (ACCESS_PASSWORD is set)." : "No login: only this computer can open it.");
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
     console.log("Note: ANTHROPIC_API_KEY is not set. Set it before talking, or run `ant auth login` if you use the Anthropic CLI.");
   }
